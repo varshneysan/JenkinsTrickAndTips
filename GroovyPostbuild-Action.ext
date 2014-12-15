@@ -1,0 +1,12 @@
+# Change the Value of SHELVE_CHANGELISTS and ProductionType in Post-build Actions --> Groovy Postbuild to get the pass value highlight on main page
+
+def buildResult = manager.build.getResult()
+msgColor = buildResult.color.toString()
+paramInfo = manager.build.buildVariables.get('SHELVE_CHANGELISTS')
+paramInfo += " BuildType: " + manager.build.buildVariables.get('ProductionType')
+
+if (paramInfo != "") {
+     summaryHtml = "<H1>Calculated build parameters: " + paramInfo + "</H1>"
+     manager.addShortText(paramInfo, msgColor, "white", "0px", "white")
+     manager.createSummary("gear2.gif").appendText(summaryHtml, false, false, false, msgColor)
+}
