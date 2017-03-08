@@ -99,3 +99,17 @@ node () {
         build job: '<ProdDeployJobName>', parameters: [[$class: 'StringParameterValue', name: 'Version', value: "${BUILD_NUMBER}"]]
     }
 }
+
+// Adding Template variable used 
+// <REPO>
+//<TARGETDIR> = <RPMTARGETDIR>  = cd RPMTARGETDIR && call rpm to create
+//<USER>
+//<RPMDIR>  = home/<USER>/www/<RPMDIR>
+//<INIT_SERVICE> = /etc/init.d/INIT_SERVICE
+//<TARGETDIR> = usage-record-service-web/target/<WWWDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm
+//            = <TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm
+
+//<SONAR_SOURCE>
+//<SONAR_LIB>
+
+//<ProdDeployJobName>  Prod deployment job name and pass current build number as variable. Ex. CampaignServiceProdDeploy
