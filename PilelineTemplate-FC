@@ -1,0 +1,101 @@
+lock() {
+	node () {
+      stage ('PrePation') {
+              sh 'echo Branch : ${SourceBranch} '
+			   			checkout([$class: 'GitSCM', branches: [[name: 'refs/heads/${SourceBranch}']], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'CheckoutOption', timeout: 30], [$class: 'CloneOption', depth: 0, noTags: false, reference: '', shallow: false, timeout: 30]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'b9d1285d-e05e-4dd3-b038-0e858662d9c2', url: 'git@bitbucket.org:freecharge/<REPO>.git']]])
+              sshagent(['b9d1285d-e05e-4dd3-b038-0e858662d9c2']) {
+                  sh 'git pull origin master'
+              }
+      }
+
+	stage ('Compilation') {
+			sh "mvn clean package install -U -Dmaven.test.skip=true"
+			sh 'cd <RPMTARGETDIR>; echo "cd /home/<USER>/www/ && rm -rf <RPMDIR>" > /tmp/after_remove;sudo -S /usr/local/bin/fpm -s dir -t rpm -n <RPMDIR> -v 1.${BUILD_NUMBER}.0 --prefix=/home/<USER>/www/ --vendor "Freecharge Payment Pvt Ltd" --pacman-user <USER> --pacman-group <USER> --after-remove /tmp/after_remove <RPMDIR>;cd ../../'
+			archiveArtifacts artifacts: '<TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm', fingerprint: true, onlyIfSuccessful: true
+		}
+
+		stage ('Sonar')	{
+		withSonarQubeEnv {
+   		sh '/usr/local/sonar-scanner-2.8/bin/sonar-scanner -e -Dsonar.host.url=http://10.128.6.129:9000 \
+        		-Dsonar.projectName=<REPO> \
+        		-Dsonar.projectVersion=$BUILD_NUMBER.0 \
+            -Dsonar.projectKey=<REPO> \
+            -Dsonar.sources=<SONAR_SOURCE> \
+            -Dsonar.java.libraries="<SONAR_LIB>" \
+        		-Dsonar.projectBaseDir=$WORKSPACE'
+    		}
+		}
+	}
+}
+
+stage (name: 'DevDeploy') {
+    mail (to: 'growth-dev@freecharge.com',
+    //mail (to: 'sandeep.varshney@freecharge.com',
+	 	subject: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} is ready for Dev testing.",
+		body: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} (No ${env.BUILD_NUMBER}) is ready for Developer testing and waiting for your approval to deploy on Dev box. Please go to ${env.BUILD_URL} to Approve or Abort the request. Sonar Report is available at http://10.128.6.129:9000/dashboard/index/<REPO>");
+		timeout(time: 2, unit: 'DAYS') {
+			  input message: 'Do you want to deploy on DevEnv Dev8?', submitter: 'fcsv17805,fcpr17853'
+		    node () {
+            sh 'scp ../builds/$BUILD_NUMBER/archive/<TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm <USER>@dev8.dev.freechage.in:www/'
+    		    sh 'ssh <USER>@dev8.dev.freechage.in -C "sudo -S /etc/init.d/<INIT_SERVICE> stop; cd www/;sudo -S rpm -e `rpm -qa | grep <RPMDIR>`;rm -rf <RPMDIR>;sudo -S rpm -ivh <RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm;cd;sudo /etc/init.d/<INIT_SERVICE> start; rm -f www/*.rpm"'
+		    }
+	  }
+    mail (to: 'growth-dev@freecharge.com',
+    //mail (to: 'sandeep.varshney@freecharge.com',
+    subject: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} is waiting for Dev to promote to QA Env.",
+    body: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} (${env.BUILD_NUMBER}) is waiting for Dev to promote to QA Env. Sonar Report is available at http://10.128.6.129:9000/dashboard/index/CampaignService");
+		timeout(time: 2, unit: 'DAYS') {
+			  input message: 'Do you want to Pramote to QA?', submitter: 'fcsv17805,fcpr17853'
+    }
+}
+
+stage (name: 'QA') {
+    mail (to: 'QA@freecharge.com',
+                subject: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} is waiting for QA functional testing",
+                body: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} is waiting for QA functional testing. Please go to ${env.BUILD_URL} to Approve or Abort the request for QA Deployment.");
+    timeout(time: 2, unit: 'DAYS') {
+        input message: 'Do you Want to Deploy it on QA box?', submitter: 'fcsv17805,fcpr17853'
+        node () {
+            sh 'scp ../builds/$BUILD_NUMBER/archive/<TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm  <USER>@10.252.2.211:www/'
+            sh 'ssh <USER>@10.252.2.211  -C "sudo -S /etc/init.d/<INIT_SERVICE> stop; cd www/;sudo -S rpm -e `rpm -qa | grep <RPMDIR>`;rm -rf <RPMDIR>;sudo -S rpm -ivh <RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm;cd;sudo /etc/init.d/<INIT_SERVICE> start; rm -f www/*.rpm"'
+        }
+    }
+    mail (to: 'QA@freecharge.com',
+          subject: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} is waiting for QA functionality test confirmation.",
+          body: "Job '${env.JOB_NAME}' Branch: ${SourceBranch} (${env.BUILD_NUMBER}) is waiting for QA functionality test confirmation. Please approve the request to promote the job to preProd env");
+          timeout(time: 2, unit: 'DAYS') {
+              input message: 'Promote to Pre-Prod for Sanity?', submitter: 'fcsv17805,fcpr17853'
+          }
+}
+
+stage (name: 'Sanity') {
+node() {
+  dir('master') {
+      checkout([$class: 'GitSCM', branches: [[name: 'refs/heads/master']], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'CheckoutOption', timeout: 30], [$class: 'CloneOption', depth: 0, noTags: false, reference: '', shallow: false, timeout: 30]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'b9d1285d-e05e-4dd3-b038-0e858662d9c2', url: 'git@bitbucket.org:freecharge/<REPO>.git']]])
+
+      sshagent(['b9d1285d-e05e-4dd3-b038-0e858662d9c2']) {
+          bitbucketStatusNotify ( buildState: 'SUCCESSFUL' )
+          sh 'git pull origin master; git pull origin ${SourceBranch}'
+          sh "mvn clean package install -U -Dmaven.test.skip=true"
+          sh 'cd <RPMTARGETDIR>; echo "cd /home/<USER>/www/ && rm -rf <RPMDIR>" > /tmp/after_remove;sudo -S /usr/local/bin/fpm -s dir -t rpm -n <RPMDIR> -v 1.${BUILD_NUMBER}.1 --prefix=/home/<USER>/www/ --vendor "Freecharge Payment Pvt Ltd" --pacman-user <USER> --pacman-group <USER> --after-remove /tmp/after_remove <RPMDIR>;cd ../../'
+    			archiveArtifacts artifacts: '<TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm', fingerprint: true, onlyIfSuccessful: true
+          sh 'scp ../../builds/$BUILD_NUMBER/archive/<TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm  <USER>@10.252.2.211:www/'
+          sh 'ssh <USER>@10.252.2.211  -C "sudo -S /etc/init.d/<INIT_SERVICE> stop; cd www/;sudo -S rpm -e `rpm -qa | grep <RPMDIR>`;rm -rf <RPMDIR>;sudo -S rpm -ivh <RPMDIR>-1.${BUILD_NUMBER}.1-1.x86_64.rpm ;cd;sudo /etc/init.d/<INIT_SERVICE> start; rm -f www/*.rpm"'
+          sh "mvn clean; git push origin master"
+      }
+
+
+            sh 'mkdir -p ${WORKSPACE}/../builds/$BUILD_NUMBER/upload/<RPMDIR>/Branch/${BUILD_NUMBER} ${WORKSPACE}/../builds/$BUILD_NUMBER/upload/<RPMDIR>/master/$BUILD_NUMBER'
+            sh 'ln -sf ${WORKSPACE}/../builds/$BUILD_NUMBER/archive/<TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.0-1.x86_64.rpm ${WORKSPACE}/../builds/$BUILD_NUMBER/upload/<RPMDIR>/Branch/${BUILD_NUMBER}/'
+            sh 'ln -sf ${WORKSPACE}/../builds/$BUILD_NUMBER/archive/<TARGETDIR>/<RPMDIR>-1.${BUILD_NUMBER}.1-1.x86_64.rpm ${WORKSPACE}/../builds/$BUILD_NUMBER/upload/<RPMDIR>/master/${BUILD_NUMBER}/'
+            sh 'cd ${WORKSPACE}/../builds/$BUILD_NUMBER/ && aws s3 cp upload s3://fc.jenkins.artifcats.prod --region ap-southeast-1 --recursive'
+  }
+}
+}
+
+stage (name:'Prod') {
+node () {
+        //build job: 'CampaignServiceProdDeploy', parameters: [[$class: 'StringParameterValue', name: 'Version', value: "${BUILD_NUMBER}"]]
+        build job: '<ProdDeployJobName>', parameters: [[$class: 'StringParameterValue', name: 'Version', value: "${BUILD_NUMBER}"]]
+    }
+}
