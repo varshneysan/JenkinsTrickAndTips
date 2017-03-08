@@ -1,0 +1,9 @@
+                withSonarQubeEnv {
+                sh &apos;/usr/local/sonar-scanner-2.8/bin/sonar-scanner -e -Dsonar.host.url=http://10.128.6.129:9000 \
+                        -Dsonar.projectName=CampaignService \
+                        -Dsonar.projectVersion=$BUILD_NUMBER.0 \
+                        -Dsonar.java.libraries=&quot;campaign-client/target/classes,campaign-common/target/classes,campaign-tool-client/target/classes,campaign-dao/target/classes,campaign-service/target/classes,campaign-web/target/classes,campaign-web/target/campaign-service/WEB-INF/classes,campaign-client/target/*.jar,campaign-common/target/*.jar,campaign-tool-client/target/*.jar,campaign-dao/target/*.jar,campaign-service/target/*.jar,campaign-web/target/campaign-service/WEB-INF/lib/*.jar&quot; \
+                        -Dsonar.projectKey=CampaignService \
+                        -Dsonar.sources=campaign-client/src,campaign-common/src,campaign-dao/src,campaign-service/src,campaign-tool-client/src,campaign-web/src \
+                        -Dsonar.projectBaseDir=$WORKSPACE&apos;
+                }
