@@ -1,5 +1,7 @@
 To Create the Rpm : 
-
+/usr/local/bin/fpm -s dir -t rpm -n ${ENV}-webapp -v ${BUILD_NUMBER}.0.0 --prefix=/home/fc-web/www/ --vendor="Freecharge Payment Pvt Ltd" --pacman-user=fc-web --pacman-group=fc-web webapp
+ 
+To Create the Rpm Repo: 
 sudo /usr/bin/createrepo --update /var/repo/webapp/prod/
 
 Client side configuration.
