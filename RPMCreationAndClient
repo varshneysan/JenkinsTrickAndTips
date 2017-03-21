@@ -1,0 +1,13 @@
+To Create the Rpm : 
+
+sudo /usr/bin/createrepo --update /var/repo/webapp/prod/
+
+Client side configuration.
+- Make sure, it has webserver running. 
+- Inside /etc/yum.repos.d/ create a file with name "prod-webapp.repo"
+- Contains of the file are - 
+[prod-webapp]
+name=Prod Webapp Repo
+baseurl=http://jenkins-preprod1.sg1.freecharge.com/yum/prod
+gpgcheck=0
+enabled=1
