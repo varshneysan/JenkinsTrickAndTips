@@ -16,13 +16,13 @@
     server {
         listen 80;
 
-        server_name  172.30.16.42 jenkins-preprod1.sg1.freecharge.com ;
+        server_name  172.30.16.42 jenkins-preprod1.sg1.com ;
 
         root /var/repo/webapp ;
 
         location / {
 
-            proxy_pass http://jenkins-preprod1.sg1.freecharge.com:8080;
+            proxy_pass http://jenkins-preprod1.sg1.com:8080;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
             proxy_set_header Host $host;
