@@ -1,5 +1,5 @@
 To Create the Rpm : 
-/usr/local/bin/fpm -s dir -t rpm -n ${ENV}-webapp -v ${BUILD_NUMBER}.0.0 --prefix=/home/fc-web/www/ --vendor="Freecharge Payment Pvt Ltd" --pacman-user=fc-web --pacman-group=fc-web webapp
+/usr/local/bin/fpm -s dir -t rpm -n ${ENV}-Component -v ${BUILD_NUMBER}.0.0 --prefix=/home/fc-web/www/ --vendor="My Company  Pvt Ltd" --pacman-user=user --pacman-group=group ComponentDir
  
 To Create the Rpm Repo: 
 sudo /usr/bin/createrepo --update /var/repo/webapp/prod/
@@ -10,6 +10,6 @@ Client side configuration.
 - Contains of the file are - 
 [prod-webapp]
 name=Prod Webapp Repo
-baseurl=http://jenkins-preprod1.sg1.freecharge.com/yum/prod
+baseurl=http://jenkins-preprod1.sg1.com/yum/prod
 gpgcheck=0
 enabled=1
