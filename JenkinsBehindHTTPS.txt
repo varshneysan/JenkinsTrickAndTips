@@ -1,0 +1,158 @@
+# Taken it from https://mohitgoyal.co/2017/02/08/securing-your-jenkins-environment-and-configure-for-auditing/
+
+Configuration for Auditing Environment
+Change service account for Jenkins
+On a rpm based distro such as CentOS or debian based distro such as ubuntu, you might have noticed that Jenkins installation creates a user named Jenkins. For our purposes, we’ll leave the username same. It is stored in the variable named JENKINS_USER and if you feel like changing it, you can change it from /etc/sysconfig/jenkins file. Most of the Jenkins environment settings are stored in this file only besides config.xml.
+
+Change login shell for Jenkins service account
+If we check the contents of /etc/passwd file, the login shell is disabled by default for user named Jenkins.
+
+So, first we need to change the login shell to bash by using vi editor.
+
+Change password for Jenkins service account
+Once its done, changed password of the Jenkins user using passwd. Using su, make sure its working:
+
+Configure Sudo privileges for Jenkins service account
+Now, let’s modify the /etc/sudoers to assign Jenkins user, to act as sudo:
+
+Why all of above is required? Because, all administrative actions should be a done under single account which helps in auditing purposes. We would need to trace logs for that user only.
+
+Enable Access logs for Jenkins
+Edit /etc/sysconfig/jenkins file and set JENKINS_ENABLE_ACCESS_LOG to yes. This will create a access log file in /var/log/jenkins/.
+
+===========================================
+Configuration for Securing Environment
+===========================================
+Change default port for Jenkins
+Next course of actions would need to change default jenkins port from 8080 to just 80 or something else.  For this, modify the value of variable JENKINS_PORT on file /etc/sysconfig/jenkins and restart jenkins service to see if its working fine. Don’t forget to add firewall exception for new port:
+
+#this command configure firewall to accept incoming tcp connections on port 80
+
+    firewall-cmd --zone=public --permanent --add-port=80/tcp
+    firewall-cmd --reload
+    
+In above commands, we added exception for port 80 for firewall.
+
+Configure SSL for Jenkins
+Off course, the most suited option would be to set Jenkins server to use SSL. For our purposes, we’ll configure Jenkins to use a self-signed SSL. Note that you should always be using a trusted 3rd party certificate in production environment. So first we need to generate CSR, create certificate and then configure Jenkins to use it. After this, we’ll need to configure linux distro to allow connections for same.
+
+1. Generate Certificate CSR
+For this, run below command:
+
+openssl req -new > new.ssl.csr
+Once you do this, you’ll be prompted for a passphrase (Do remember the passphrase) for next steps. Once your password is accepted, it will ask certain questions related for CSR generation.
+
+Below is one of the sample run:
+
+[root@localhost ~]# openssl req -new > new.ssl.csr
+Generating a 2048 bit RSA private key
+.........................+++
+....................................................+++
+writing new private key to 'privkey.pem'
+Enter PEM pass phrase:
+Verifying - Enter PEM pass phrase:
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [XX]:IN
+State or Province Name (full name) []:Pune
+Locality Name (eg, city) [Default City]:Pune
+Organization Name (eg, company) [Default Company Ltd]:metavrs.in
+Organizational Unit Name (eg, section) []:metavrs.in
+Common Name (eg, your name or your server's hostname) []:jenkinsci.com
+Email Address []:
+
+Please enter the following 'extra' attributes
+to be sent with your certificate request
+A challenge password []:
+An optional company name []:
+You should leave challenge password empty.
+
+2. Generate the self-signed certificate
+Again, we need to use openssl for same. Run below commands one at a time:
+
+openssl rsa -in privkey.pem -out new.cert.key
+
+openssl x509 -in new.ssl.csr -out new.cert.cert -req -signkey new.cert.key \
+-days 365
+3. Create a Java keystore
+First we need to convert the certificate generated into pkcs12 format. For this, run below command:
+
+openssl pkcs12 -export -out jenkins_keystore.p12 -passout 'pass:password' \
+-inkey new.cert.key -in new.cert.cert -name jenkinsci.com
+Then run below command:
+
+keytool -importkeystore -srckeystore jenkins_keystore.p12 \
+ -srcstorepass 'password' -srcstoretype PKCS12 \
+ -srcalias jenkinsci.com -deststoretype JKS \
+ -destkeystore jenkins_keystore.jks -deststorepass 'password' \
+ -destalias jenkinsci.com
+Note that, the value of -name, -srcalias and -destalias must be same. You may want to use a different password than password. Also, the value of -srcstoretype and -deststoretype must be same.
+
+4. Move keystore file to Jenkins content
+Run below commands one by one:
+
+cd /var/lib/jenkins
+
+#create keystore directory
+mkdir keystore
+
+#copy java keystore file
+cp ~/jenkins_keystore.jks /var/lib/jenkins/keystore/
+
+#configure permissions for jenkins user
+chown -R jenkins.jenkins keystore/
+chmod 700 keystore/
+This will assign appropriate permissions for Jenkins service account to access Java keystore file.
+
+5. Configure Jenkins to use SSL
+Edit /etc/sysconfig/jenkins and set the following variables:
+
+#disable HTTP
+JENKINS_PORT="-1"
+
+#configure HTTPS
+JENKINS_HTTPS_PORT="8443"
+JENKINS_HTTPS_KEYSTORE="/etc/jenkins/jenkins_keystore.jks"
+JENKINS_HTTPS_KEYSTORE_PASSWORD="password"
+JENKINS_HTTPS_LISTEN_ADDRESS="127.0.0.1"
+You need to check /var/log/jenkins/jenkins.log for potential troubleshooting.
+
+6. Configure kernel to allow port forwarding
+To enable port forwarding during runtime, run below commands:
+
+#allow forwarding
+sysctl -w net.ipv4.ip_forward=1
+#allow forwarding to localhost on eth0
+sysctl -w net.ipv4.conf.eth0.route_localnet=1
+Above is based for network interface eth0. Change with relative name in your case.
+
+For forwarding settings to persist on reboot, add or change the following settings in /etc/sysctl.conf:
+
+net.ipv4.ip_forward = 1
+net.ipv4.conf.eth0.route_localnet = 1
+7. Configure iptables to do port forwarding
+Depending on how iptables is configured you may have to adapt how you insert the rules into the runtime firewall. It may be simpler to write your rules in /etc/sysconfig/iptables and reload the firewall.
+
+#for remote connections
+iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j DNAT \
+--to-destination 127.0.0.1:8443
+iptables -A FORWARD -i eth0 -m state --state NEW -m tcp -p tcp \
+-d 127.0.0.1 --dport 8443 -j ACCEPT
+
+#for localhost connections
+iptables -t nat -A OUTPUT -p tcp --dport 443 -d 127.0.0.1 \
+-j DNAT --to-destination 127.0.0.1:8443
+Use iptables-save | less for proper configuration to update /etc/sysconfig/iptables rules.
+
+8. Restart Jenkins service
+Use below commands:
+
+systemctl stop jenkins.service
+systemctl start jenkins.service
+You can check the  /var/log/jenkins/jenkins.log for potential troubleshooting. If all goes well, you should be able to access Jenkins on -name i.e. jenkinsci.com in our case (do not forget to neglect browser warning, in case if you are using self signed certificate):
