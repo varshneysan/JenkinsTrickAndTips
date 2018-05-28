@@ -1,0 +1,6 @@
+If Jenkins server has started locally on the server but you can not browse it from your PC the you have to disable the FW.
+systemctl disable firewalld
+
+systemctl stop firewalld
+
+systemctl status firewalld
